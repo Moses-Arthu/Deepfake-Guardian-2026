@@ -1,0 +1,139 @@
+import matplotlib.pyplot as plt
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
+from reportlab.lib import colors
+import os
+import numpy as np
+
+def generate_ear_plot(ear_values, output_path="ear_plot.png"):
+    plt.figure(figsize=(8, 4))
+    plt.plot(ear_values, color='cyan', label='Eye Aspect Ratio (EAR)')
+    plt.axhline(y=0.20, color='red', linestyle='--', label='Blink Threshold (0.20)')
+    plt.title('Eye Aspect Ratio over Time', color='white')
+    plt.xlabel('Frames', color='white')
+    plt.ylabel('EAR', color='white')
+    plt.legend()
+    # Dark theme for plot
+    ax = plt.gca()
+    ax.set_facecolor('#1E1E1E')
+    plt.gcf().set_facecolor('#1E1E1E')
+    ax.spines['bottom'].set_color('white')
+    ax.spines['top'].set_color('white')
+    ax.spines['left'].set_color('white')
+    ax.spines['right'].set_color('white')
+    ax.tick_params(axis='x', colors='white')
+    ax.tick_params(axis='y', colors='white')
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=300, facecolor=plt.gcf().get_facecolor(), transparent=True)
+    plt.close()
+
+def generate_report(vision_results, audio_results, video_filename="unknown", output_pdf="forensic_report.pdf", ml_result=None):
+    c = canvas.Canvas(output_pdf, pagesize=letter)
+    width, height = letter
+    
+    # Background
+    c.setFillColorRGB(0.05, 0.07, 0.1)
+    c.rect(0, 0, width, height, fill=1)
+    
+    # Header
+    c.setStrokeColorRGB(0.35, 0.65, 1.0)
+    c.setLineWidth(2)
+    c.line(50, height - 50, width - 50, height - 50)
+    
+    # Title
+    c.setFont("Helvetica-Bold", 24)
+    c.setFillColorRGB(0.35, 0.65, 1.0)
+    c.drawString(50, height - 85, "DEEPFAKE GUARDIAN - FORENSIC REPORT")
+    
+    c.setFont("Helvetica", 11)
+    c.setFillColorRGB(0.8, 0.8, 0.8)
+    c.drawString(50, height - 105, f"Analysis Target: {video_filename}")
+    
+    # --- ML Verdict Section ---
+    y_pos = height - 140
+    c.setFont("Helvetica-Bold", 16)
+    c.setFillColorRGB(0.9, 0.9, 0.9)
+    c.drawString(50, y_pos, "CORE DETECTION VERDICT (ML-POWERED)")
+    
+    if ml_result:
+        pred = ml_result["prediction"]
+        conf = ml_result["confidence"]
+        
+        y_pos -= 25
+        c.setFont("Helvetica-Bold", 20)
+        if pred == "AUTHENTIC":
+            c.setFillColorRGB(0.2, 0.9, 0.2)
+            c.drawString(50, y_pos, f"RESULT: {pred} ({conf*100:.1f}% Confidence)")
+        else:
+            c.setFillColorRGB(1.0, 0.2, 0.2)
+            c.drawString(50, y_pos, f"RESULT: {pred} ({conf*100:.1f}% Confidence)")
+            
+        c.setFont("Helvetica", 10)
+        c.setFillColorRGB(0.7, 0.7, 0.7)
+        y_pos -= 15
+        method = ml_result.get("method", "unknown")
+        acc = ml_result.get("model_accuracy", 0)
+        c.drawString(50, y_pos, f"Detection Method: {method} | Training Accuracy: {acc*100:.1f}%")
+        
+        # Features Table
+        y_pos -= 30
+        c.setFont("Helvetica-Bold", 12)
+        c.setFillColorRGB(0.9, 0.9, 0.9)
+        c.drawString(50, y_pos, "Forensic Signal Breakdown:")
+        
+        y_pos -= 15
+        c.setFont("Helvetica", 9)
+        if "contributions" in ml_result and ml_result["contributions"]:
+            sorted_feat = sorted(ml_result["contributions"].items(), key=lambda x: x[1]["importance"], reverse=True)
+            for name, info in sorted_feat[:6]:
+                y_pos -= 12
+                val = info["value"]
+                imp = info["importance"]
+                c.drawString(70, y_pos, f"• {name}: value={val:.4f} (Priority: {imp*100:.1f}%)")
+    
+    # --- Vision Section ---
+    y_pos -= 40
+    c.setStrokeColorRGB(0.3, 0.3, 0.3)
+    c.line(50, y_pos, width - 50, y_pos)
+    
+    y_pos -= 25
+    c.setFont("Helvetica-Bold", 14)
+    c.setFillColorRGB(0.9, 0.9, 0.9)
+    c.drawString(50, y_pos, "1. Biological Physiological Analysis")
+    
+    c.setFont("Helvetica", 11)
+    bpm = vision_results["blinks_per_minute"]
+    v_conf = vision_results.get("confidence_score", 0.0)
+    y_pos -= 20
+    c.drawString(50, y_pos, f"Detected Blink Rate: {bpm:.2f} BPM")
+    y_pos -= 15
+    c.drawString(50, y_pos, f"Vision Engine Suspicion: {v_conf*100:.0f}%")
+    
+    # Plot Image
+    generate_ear_plot(vision_results["ear_values"])
+    c.drawImage("ear_plot.png", 55, y_pos - 210, width=500, height=200)
+    y_pos -= 220
+    
+    # --- Audio/Lip-Sync Section ---
+    y_pos -= 20
+    c.setFont("Helvetica-Bold", 14)
+    c.drawString(50, y_pos, "2. Multimodal Lip-Sync Desynchronization")
+    
+    c.setFont("Helvetica", 11)
+    a_conf = audio_results.get("confidence_score", 0.0)
+    y_pos -= 20
+    c.drawString(50, y_pos, f"Detected Phoneme-Viseme Anomalies: {audio_results['anomalies_count']}")
+    y_pos -= 15
+    c.drawString(50, y_pos, f"Sync Suspicion Score: {a_conf*100:.0f}%")
+    
+    # Footer
+    c.setFont("Helvetica-Oblique", 9)
+    c.setFillColorRGB(0.5, 0.5, 0.5)
+    c.drawString(50, 30, "Generated by Deepfake Guardian 2026 - Forensic Grade Forensic Analysis Framework")
+    
+    c.save()
+    
+    if os.path.exists("ear_plot.png"):
+        os.remove("ear_plot.png")
+        
+    return output_pdf
